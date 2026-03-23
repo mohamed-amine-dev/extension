@@ -433,21 +433,35 @@ async function fetchImageAsDataUrl(url) {
   return null;
 }
 
-// ─── WebP Conversion ──────────────────────────────────────────────────────────
+// ─── WebP Conversion (min 600×600 upscale) ───────────────────────────────────
+const MIN_SIZE = 600; // Minimum output dimension in pixels
+
 function convertToWebp(dataUrl) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
-      const w = img.naturalWidth  || img.width  || 800;
-      const h = img.naturalHeight || img.height || 600;
+      let w = img.naturalWidth  || img.width  || 800;
+      let h = img.naturalHeight || img.height || 600;
+
+      // If the image is smaller than MIN_SIZE in any dimension, scale it up
+      // Preserves aspect ratio — only the smaller axis drives the scale
+      if (w < MIN_SIZE || h < MIN_SIZE) {
+        const scale = Math.max(MIN_SIZE / w, MIN_SIZE / h);
+        w = Math.round(w * scale);
+        h = Math.round(h * scale);
+      }
+
       const canvas = document.createElement('canvas');
       canvas.width  = w;
       canvas.height = h;
       const ctx = canvas.getContext('2d');
+      // High-quality bicubic-like interpolation for clean upscaling
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(img, 0, 0, w, h);
+
       const webp = canvas.toDataURL('image/webp', 0.92);
-      // If browser doesn't support WebP output, fall back to PNG
       resolve(webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/png'));
     };
     img.onerror = () => reject(new Error('Could not load image for conversion'));
