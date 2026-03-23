@@ -12,6 +12,8 @@ let displayImages = [];  // After type filter applied
 let activeFilter = 'all';
 let productName  = 'image';
 let isScanning   = false;
+let selectMode   = false;         // Multi-select mode on/off
+let selectedUrls = new Set();     // URLs currently selected
 
 // ─── DOM ──────────────────────────────────────────────────────────────────────
 const scanBtn         = document.getElementById('scanBtn');
@@ -30,7 +32,53 @@ const previewMeta     = document.getElementById('previewMeta');
 const previewClose    = document.getElementById('previewClose');
 const previewDlBtn    = document.getElementById('previewDlBtn');
 
-// ─── Filter Chips ─────────────────────────────────────────────────────────────
+const selectionBar     = document.getElementById('selectionBar');
+const selCountLabel    = document.getElementById('selCountLabel');
+const selDownloadCount = document.getElementById('selDownloadCount');
+const selDownloadBtn   = document.getElementById('selDownloadBtn');
+const selAllBtn        = document.getElementById('selAllBtn');
+const selNoneBtn       = document.getElementById('selNoneBtn');
+const selectModeBtn    = document.getElementById('selectModeBtn');
+
+// ─── Select Mode Toggle ───────────────────────────────────────────────────────
+selectModeBtn.addEventListener('click', () => {
+  selectMode = !selectMode;
+  selectModeBtn.classList.toggle('active', selectMode);
+  imageGrid.classList.toggle('select-mode', selectMode);
+  if (!selectMode) {
+    // Clear selection when exiting
+    selectedUrls.clear();
+    document.querySelectorAll('.img-card.selected').forEach(c => c.classList.remove('selected'));
+    selectionBar.classList.add('hidden');
+  }
+  updateSelectionBar();
+});
+
+selAllBtn.addEventListener('click', () => {
+  displayImages.forEach(img => selectedUrls.add(img.url));
+  document.querySelectorAll('.img-card').forEach(c => c.classList.add('selected'));
+  updateSelectionBar();
+});
+
+selNoneBtn.addEventListener('click', () => {
+  selectedUrls.clear();
+  document.querySelectorAll('.img-card').forEach(c => c.classList.remove('selected'));
+  updateSelectionBar();
+});
+
+selDownloadBtn.addEventListener('click', () => downloadSelected());
+
+function updateSelectionBar() {
+  const count = selectedUrls.size;
+  if (selectMode) {
+    selCountLabel.textContent = count === 0 ? 'None selected' : `${count} selected`;
+    selDownloadCount.textContent = count;
+    selectionBar.classList.toggle('hidden', false);
+    selDownloadBtn.disabled = count === 0;
+  } else {
+    selectionBar.classList.add('hidden');
+  }
+}
 document.querySelectorAll('.chip').forEach((chip) => {
   chip.addEventListener('click', () => {
     document.querySelectorAll('.chip').forEach((c) => c.classList.remove('active'));
@@ -131,7 +179,13 @@ function renderGrid() {
 
   displayImages.forEach((img, i) => {
     const card = document.createElement('div');
-    card.className = 'img-card';
+    card.className = 'img-card' + (selectedUrls.has(img.url) ? ' selected' : '');
+    card.dataset.url = img.url;
+
+    // Selection check circle (visible in select mode)
+    const check = document.createElement('div');
+    check.className = 'sel-check';
+    card.appendChild(check);
 
     // Image element
     const el = document.createElement('img');
@@ -155,12 +209,12 @@ function renderGrid() {
     badge.textContent = img.type.toUpperCase();
     card.appendChild(badge);
 
-    // Spinner (shown during download)
+    // Spinner (shown during single download)
     const spinner = document.createElement('div');
     spinner.className = 'card-spinner';
     card.appendChild(spinner);
 
-    // Download button (bottom-right, appears on hover)
+    // Download button (bottom-right, appears on hover, hidden in select mode)
     const dlBtn = document.createElement('button');
     dlBtn.className = 'dl-btn-overlay';
     dlBtn.title = 'Download as WebP';
@@ -170,16 +224,84 @@ function renderGrid() {
       <line x1="12" y1="15" x2="12" y2="3"/>
     </svg>`;
     dlBtn.addEventListener('click', (e) => {
-      e.stopPropagation(); // Don't open preview
-      downloadAsWebp(img, card, i);
+      e.stopPropagation();
+      if (!selectMode) downloadAsWebp(img, card, i);
     });
     card.appendChild(dlBtn);
 
-    // Click card body = open full preview
-    card.addEventListener('click', () => openPreview(img, i));
+    // Card click: select/deselect in select mode, open preview otherwise
+    card.addEventListener('click', () => {
+      if (selectMode) {
+        if (selectedUrls.has(img.url)) {
+          selectedUrls.delete(img.url);
+          card.classList.remove('selected');
+        } else {
+          selectedUrls.add(img.url);
+          card.classList.add('selected');
+        }
+        updateSelectionBar();
+      } else {
+        openPreview(img, i);
+      }
+    });
 
     imageGrid.appendChild(card);
   });
+  // Keep select-mode class on grid if active
+  imageGrid.classList.toggle('select-mode', selectMode);
+}
+
+// ─── Multi-select Download (all simultaneous) ────────────────────────────────
+async function downloadSelected() {
+  const toDownload = displayImages.filter(img => selectedUrls.has(img.url));
+  if (!toDownload.length) return;
+
+  selDownloadBtn.disabled = true;
+  showToast(`⬇ Downloading ${toDownload.length} images...`, '');
+
+  // Launch ALL downloads simultaneously (parallel)
+  const promises = toDownload.map((img, localIndex) => {
+    const globalIndex = displayImages.indexOf(img);
+    return singleDownloadQuiet(img, globalIndex);
+  });
+
+  const results = await Promise.allSettled(promises);
+  const succeeded = results.filter(r => r.status === 'fulfilled' && r.value).length;
+  const failed    = results.length - succeeded;
+
+  selDownloadBtn.disabled = selectedUrls.size === 0;
+  showToast(
+    failed === 0
+      ? `✓ ${succeeded} image${succeeded !== 1 ? 's' : ''} downloaded!`
+      : `✓ ${succeeded} downloaded, ${failed} failed`,
+    failed === 0 ? 'success' : ''
+  );
+}
+
+// Silent single download used for bulk — no loading spinner on card
+async function singleDownloadQuiet(img, index) {
+  try {
+    if (img.type === 'gif') {
+      const ext = 'gif';
+      const filename = buildFilename(img, index, ext);
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const resp = await chrome.tabs.sendMessage(tab.id, { action: 'FETCH_IMAGE', url: img.url }).catch(() => null);
+      if (resp?.success && resp.dataUrl) {
+        await chrome.runtime.sendMessage({ action: 'DOWNLOAD_BLOB', dataUrl: resp.dataUrl, filename });
+      } else {
+        await chrome.runtime.sendMessage({ action: 'DOWNLOAD_URL', url: img.url, filename });
+      }
+    } else {
+      const dataUrl = await fetchImageAsDataUrl(img.url);
+      if (!dataUrl) return false;
+      const webpDataUrl = await convertToWebp(dataUrl);
+      const filename = buildFilename(img, index, 'webp');
+      await chrome.runtime.sendMessage({ action: 'DOWNLOAD_BLOB', dataUrl: webpDataUrl, filename });
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ─── Download a single image as WebP ─────────────────────────────────────────

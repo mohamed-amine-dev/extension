@@ -47,6 +47,14 @@
         <span id="scanBtnText">Scan Page</span>
       </button>
 
+      <!-- Select Mode Toggle -->
+      <button class="select-toggle-btn" id="selectModeBtn" title="Select multiple images">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        Select
+      </button>
+
       <div class="filter-chips" id="filterChips">
         <button class="chip active" data-type="all">All</button>
         <button class="chip" data-type="gif">GIF</button>
@@ -66,7 +74,7 @@
     <!-- Stats row when images loaded -->
     <div class="stats-row hidden" id="statsRow">
       <span id="imgCountLabel">0 images found</span>
-      <span class="stats-hint">Click <svg class="inline-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> to save as WebP</span>
+      <span class="stats-hint" id="statsHint">Click <svg class="inline-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> to save · or <strong>Select</strong> mode for bulk</span>
     </div>
 
     <!-- Image Grid -->
@@ -86,6 +94,28 @@
 
     <!-- Toast notification -->
     <div class="toast hidden" id="toast"></div>
+
+    <!-- Floating selection bar (shown in select mode when items are picked) -->
+    <div class="selection-bar hidden" id="selectionBar">
+      <div class="sel-info">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        <span id="selCountLabel">0 selected</span>
+      </div>
+      <div class="sel-actions">
+        <button class="sel-btn sel-all" id="selAllBtn">All</button>
+        <button class="sel-btn sel-none" id="selNoneBtn">None</button>
+        <button class="sel-btn sel-download" id="selDownloadBtn">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Download <span id="selDownloadCount">0</span>
+        </button>
+      </div>
+    </div>
 
     <!-- Per-image fullsize overlay -->
     <div class="preview-overlay hidden" id="previewOverlay">
